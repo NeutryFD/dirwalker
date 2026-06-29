@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/neutry/dirwalker"
+	"github.com/NeutryFD/dirwalker"
 )
 
 type progressLine struct {
