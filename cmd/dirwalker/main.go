@@ -25,10 +25,11 @@ type doneLine struct {
 
 func main() {
 	var (
-		maxDepth    int
-		excludeStr  string
-		workers     int
-		reportFiles bool
+		maxDepth     int
+		excludeStr   string
+		workers      int
+		reportFiles  bool
+		outputFormat string
 	)
 
 	flag.IntVar(&maxDepth, "max-depth", 0, "max directory depth (0 = unlimited)")
@@ -39,6 +40,8 @@ func main() {
 	flag.IntVar(&workers, "w", 0, "shorthand for --workers")
 	flag.BoolVar(&reportFiles, "files", false, "report individual file sizes")
 	flag.BoolVar(&reportFiles, "f", false, "shorthand for --files")
+	flag.StringVar(&outputFormat, "output", "json-lines", "output format (table, json, yaml, json-lines)")
+	flag.StringVar(&outputFormat, "o", "json-lines", "shorthand for --output")
 	flag.Parse()
 
 	root := ""
@@ -58,19 +61,31 @@ func main() {
 		excludeList = strings.Split(excludeStr, ",")
 	}
 
+	var entries []dirwalker.ScanEntry
+
 	enc := json.NewEncoder(os.Stdout)
+	streaming := outputFormat == "json-lines"
 
 	progress := func(p string, size int64, isDir bool) {
-		typ := "dir"
-		if !isDir {
-			typ = "file"
+		if streaming {
+			typ := "dir"
+			if !isDir {
+				typ = "file"
+			}
+			_ = enc.Encode(progressLine{
+				Type:  typ,
+				Path:  p,
+				Size:  size,
+				Human: dirwalker.FormatBytesShort(size),
+			})
+		} else {
+			entries = append(entries, dirwalker.ScanEntry{
+				Path:  p,
+				Size:  size,
+				IsDir: isDir,
+				Human: dirwalker.FormatBytesShort(size),
+			})
 		}
-		_ = enc.Encode(progressLine{
-			Type:  typ,
-			Path:  p,
-			Size:  size,
-			Human: dirwalker.FormatBytesShort(size),
-		})
 	}
 
 	total, err := dirwalker.ScanDirectory(root, maxDepth, excludeList, progress, workers, reportFiles)
@@ -79,9 +94,24 @@ func main() {
 		os.Exit(1)
 	}
 
-	_ = enc.Encode(doneLine{
-		Type:  "done",
-		Size:  total,
-		Human: dirwalker.FormatBytesShort(total),
-	})
+	summary := dirwalker.ScanSummary{
+		TotalSize: total,
+		TotalStr:  dirwalker.FormatBytesShort(total),
+		Entries:   entries,
+	}
+
+	switch outputFormat {
+	case "json":
+		fmt.Println(dirwalker.RenderJSON(summary))
+	case "yaml":
+		fmt.Println(dirwalker.RenderYAML(summary))
+	case "table":
+		fmt.Print(dirwalker.RenderTable(summary))
+	default:
+		_ = enc.Encode(doneLine{
+			Type:  "done",
+			Size:  total,
+			Human: dirwalker.FormatBytesShort(total),
+		})
+	}
 }
