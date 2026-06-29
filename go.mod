@@ -1,4 +1,4 @@
-module github.com/neutry/dirwalker
+module github.com/NeutryFD/dirwalker
 
 go 1.26.0
 
